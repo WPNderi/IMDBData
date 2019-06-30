@@ -1,0 +1,361 @@
+---
+title: "Assignment 3 Data Preprocessing:IMDB Movie Data Preprocessing Tasks"
+author: "Wesley Nderi s3635870 & Catherine Sandow s3629599"
+output: 
+  html_notebook: 
+    fig_caption: yes
+---
+## 1. Introduction
+
+The goal of this assignment is to apply a variety of data preprocessing tasks to a series of datasets. For the purposes of this report, we have considered three IMDB Movie datasets, two sourced from the [Relational Dataset Repository](https://relational.fit.cvut.cz/dataset/IMDb) and another sourced from [Kaggle](https://www.kaggle.com/PromptCloudHQ/imdb-data). 
+
+
+The first two datasets have been extracted from a relational database with the schema shown below. Specifically, only the **movies** table and the **movies_genre** table are considered in this report. 
+
+ ![*IMDB Database Movie Schema sourced from the Relational Dataset Repository*](database.png)
+
+
+The rest of this report is organised as follows. Section 2 explores the completion of tasks 1-9 which are completed using the dataset sourced from the Relational Database Repository. Section 3 explores Task 10 which is completed using a combination of the data used in the previous section and the data sourced from Kaggle.
+
+## 2. Tidy and Manipulate
+
+After extraction from the database, the **movies** and **movies_genres** tables are in *.csv* format and so the *read_csv()* function from the readr package can be used to import this data into R.
+
+### Preliminaries
+```{r, message=FALSE}
+# Load required packages
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(outliers)
+```
+
+
+```{r, message=FALSE}
+#Loading in the data
+movies <- read_csv("movies.csv")
+movies_genres <- read_csv("movies_genres.csv")
+```
+
+The structure and dimensions of these datasets can be seen below.
+
+The **movies** dataset contains 388269 observations(rows) and has 4 variables(columns). These variables are **id**, **name**, **year** and **rank**. On the other hand, the **movies_genres** dataset contains 395119 observation and 2 variables. These variables are **movied_id** and **genre**. The specifics of these variables are described in detail in this section of this report.
+
+
+```{r}
+#Check on the structure and dimensions of the data frames
+# Movies dataset
+str(movies)
+dim(movies)
+
+# Movie Genres dataset
+str(movies_genres)
+dim(movies_genres)
+```
+
+```{r}
+# View the movies dataset
+head(as.data.frame(movies))
+```
+
+
+```{r}
+# View the movies_genres dataset
+head(as.data.frame(movies_genres))
+```
+
+
+In order to merge both datasets, we rename the **id** variable in the movies dataset to **movie_id** using the *names* function from Base R. These datasets can now be merged using the mutual variable **movie_id** now present in both datasets.
+
+```{r}
+# Join both datasets
+# Rename the movies dataset id variable#
+names(movies)[1]<-"movie_id"
+
+movies_combined <- merge(movies,movies_genres, by="movie_id")
+```
+
+The structure and dimensions of this combined dataset, **movies_combined** can be seen below. This dataset has 395119 observations and 5 variables which are discussed briefly below. 
+
+```{r}
+# Checking on the structure and dimensions of the merged dataset
+str(movies_combined)
+dim(movies_combined)
+```
+
+
+```{r}
+# View the movies_combined dataset
+head(movies_combined)
+```
+
+As seen above, there are 5 variables present and each is described briefly below:
+
+**movie_id** - A unique identifier assigned to every movie present in the IMDB database. It has been read in as an integer.
+
+**name** - The name of a movie in the database. This has been read in as a character.
+
+**year** - This variable describes the year a movie was produced. It has been read in as an integer.
+
+**rank** - This describes the overall rating given to a movie. It has been read in as a character but should be a numeric variable.
+
+**genre** - This variable describes the classification given to a movie. It has been read in as a character but should be a factor.
+
+
+These variables are renamed to be slightly more meaningful and thereafter converted to their appropriate types.
+
+```{r}
+# Rename combined variables of the combined dataset
+names(movies_combined)[2]<-"movie_name"
+names(movies_combined)[3]<-"year_released"
+names(movies_combined)[4]<-"movie_rating"
+```
+
+
+```{r, message=FALSE}
+# Convert variable types
+movies_combined$movie_rating<-as.numeric(movies_combined$movie_rating)
+class(movies_combined$movie_rating)
+head(movies_combined$movie_rating)
+
+movies_combined$genre <- as.factor(movies_combined$genre)
+class(movies_combined$genre )
+head(movies_combined$genre)
+```
+
+it is important to highlight that the **movie_rating** variable previously had values marked "NULL" which are replaced with NAs by coercion when it is changed to be of type *numeric*. These two variables are 
+
+## Exploration of the Merged IMDB dataset
+
+We shall begin by observing whether the data observed Hadley Wickham's Tidy Principles.
+
+```{r}
+head(movies_combined)
+tail(movies_combined)
+```
+
+From the above, we can observe that the data is generally tidy as each variable forms a column, each observations forms a row and each value is in its own cell. However, there are numerous instances where an observation is duplicated as a movie can have several genres. This causes the movie identifier to be duplicated.
+
+For the purposes of this report, we shall consider a movie to have only one genre and so shall remove duplicate rows based on the variable **movie_id**  using the function *distinct* from the *dplyr* package as shown below.
+
+```{r}
+movies_distinct<- distinct(movies_combined,movie_id, .keep_all = TRUE)
+#movies_distinct2<-movies_combined[!duplicated(movies_combined$movie_id), ]#
+
+head(movies_distinct)
+```
+
+Additionally, we shall subset this distinct data frame for observations only within the last 10 years in order to answer the question, **What has been the Most Popular Movie Genre in the last 10 years? **
+
+```{r}
+# Filtering and subsetting table to 1998-2008
+movies_subset <- movies_distinct %>% filter(year_released >= "1998", genre != "Adult") 
+```
+
+## Handling Missing Values
+
+```{r}
+#Missing values in the dataset
+colSums(is.na(movies_subset))
+```
+
+The numeric variable **movie_rating** is the only variable with missing values. There are 38395 NA values in the variable which is an equivalent of 73.87% of missing data. It is likely that this is because users are not required to rate movies on the website or users only tend to rate bigger budget films that receive a lot of media attention.
+
+We can observe the total number of missing ratings by the genre that they are associated with as shown below.
+
+```{r}
+# Missing total values in rating column of movies_subset grouped by genre
+as.data.frame(movies_subset %>% group_by(genre) %>% summarise(missing_rating = sum(is.na(movie_rating))) %>% arrange(desc(missing_rating)))
+```
+
+We observe that the highest non-rated movies are documentaries, drama, short films and comedies. Conversely, Western and War movies have the lowest number of missing ratings.
+
+We find the mean rating, median rating and the number of movies rated per genre as shown below. It is observed that there is not much deviation from the mean for each of the groups.
+
+```{r}
+# Mean of Movie Genres
+genres_mean<-as.data.frame(movies_subset %>% group_by(genre) %>% summarise(group_mean = round(mean(movie_rating, na.rm = TRUE),2), group_median=median(movie_rating, na.rm = TRUE), Frequency=n())) %>% arrange(desc(group_mean))
+genres_mean
+```
+
+Documentaries have the highest mean of 6.91 and also the highest frequency count of 10829. It is therefore not surprising that this category appears to be the most popular. It is indicative that possibly this category was the most frequently rated in the dataset. 
+
+
+This report proposes to impute the missing values present in the **movie_rating** variable with the mean of the genre that the missing observation belongs to. This is successfully done below using the *mutate* function from the dplyr package.
+
+```{r}
+# Impute Missing values with group mean using mutate
+movies_imputed<-movies_subset%>% 
+  group_by(genre) %>% 
+  mutate(movie_rating = ifelse(is.na(movie_rating), mean(movie_rating, na.rm = TRUE),movie_rating))
+
+# Check for missing values
+sum(is.na(movies_imputed$movie_rating)) 
+
+# Round off to two decimal places
+movies_imputed$movie_rating<-round(movies_imputed$movie_rating,2)
+
+head(movies_imputed)
+dim(movies_imputed)
+```
+
+## Outlier Detection and Handling
+
+In order to detect for outliers in the **movie_rating** variable, we shall rely on the **movie_subset** dataframe created earlier as it is more representative of the dataset. As this is one variable in question, univariate methods of outlier detection and handling shall be considered. 
+
+A boxplot is developed for this purpose as shown below.
+
+```{r,warning=FALSE}
+movies_subset$movie_rating %>%  boxplot(main="Box Plot of Movie Ratings", ylab="Rating", col = "pink")
+```
+
+Possible outliers are observed below the lower outlier fence. 
+
+
+```{r}
+sum(is.na(movies_subset$movie_rating))
+mean(!complete.cases(movies_subset$movie_rating))
+```
+
+As had been noted earlier, there are a high number of missing values within the ratings column, accounting for about 73% of the data in this variable. This is also indicated above.
+
+We shall create a subset of the data without these missing values and see if the outliers are still present.
+
+```{r}
+complete_ratings<-movies_subset[!is.na(movies_subset$movie_rating), ] 
+
+complete_ratings$movie_rating %>%  boxplot(main="Box Plot of Movie Ratings after removing NA values", ylab="Rating", col = "pink")
+```
+
+Outliers are still present after removing the NA values.
+
+We calculate the z scores as shown below and as observed in the summary we identify that the minimum z score is -3.14310 while the maximum is 2.36846. Outliers are considered to be observations that have an absolute value larger than 3. This method finds that there are 45 observations that meet this criterion i.e. there are 45 outliers.
+
+```{r}
+# Z score method to detect univariate outliers
+z.scores <- complete_ratings$movie_rating %>%  scores(type = "z")
+
+z.scores %>% summary() 
+
+# Establish location of outliers
+which( abs(z.scores) > 3 ) 
+
+# Establish number of outliers
+length (which( abs(z.scores) >3 )) 
+```
+
+
+We can use the capping method to replace the observations lying outside the lower limit with the value of 5th percentile and those that lie above the upper limit, with the value of 95th percentile. A function is created below to perform this operation and further a boxplot is created to observe whether capping had any effect on the outliers.
+
+```{r}
+# Handling outliers using the capping method
+fun <- function(x){
+    quantiles <- quantile( x, c(.05, .95 ) )
+    x[ x < quantiles[1] ] <- quantiles[1]
+    x[ x > quantiles[2] ] <- quantiles[2]
+    x
+}
+ratings_capped<-complete_ratings$movie_rating %>% fun
+```
+
+```{r}
+# Observe if capping has been successful to get rid of outliers
+ratings_capped %>%  boxplot(main="Box Plot of Movie Ratings after Capping", ylab="Rating", col = "pink")
+```
+
+We observe that the capping method has been successful in eliminating the 45 outliers that were present in this variable.
+
+## 3. Transform
+
+To the combined dataset **movies_subset** we merge the additional IMDB movie dataset in order to observe the distribution of movie revenues for action movies.
+
+The dataset is in *.csv* format and so the function *read_csv* is used to import it into R.
+```{r,message=FALSE}
+#Load the data
+moviesB <- read_csv("IMDB-Movie-Data.csv")
+head(moviesB)
+```
+
+This dataset has 1000 observations and 12 variables as shown below. It contains a mix of numeric and character variables. 
+
+```{r}
+str(moviesB)
+dim(moviesB)
+```
+
+For the purposes of this task, we shall select the **Title**, **Year**, **Rating**, **Revenue** and **Genre** variables. These variables are renamed in order to be consistent with data previously analysed by this report.
+
+```{r}
+moviesB_<-moviesB %>% select(Title,Year,Rating,`Revenue (Millions)`,Genre)
+
+movies_joined <- inner_join(movies_subset, moviesB_, by = c("movie_name" = "Title"))
+names(moviesB_)[1]<-"movie_name"
+names(moviesB_)[2]<-"year_released"
+names(moviesB_)[3]<-"movie_rating"
+
+```
+
+
+We merge the datasets by *movie_name* in order to observe what movies these two datasets have in common, filter to include only action movies and rename the columns. 
+
+```{r}
+movies_joined_B <- merge(movies_subset,moviesB_,by=c("movie_name"))
+
+#filering movies_joined df to Action only
+movies_joined_b <-movies_joined_B %>% filter(genre == "Action") 
+
+
+#Subset further to remove double up variables 'year_released.x', 'movie_rating.x' and 'Genre'
+movies_joined_c <- movies_joined_b[-c(3,4,9)]
+
+#removing 2 entries that do no have revenue recorded
+movies_joined_d <- movies_joined_c[-c(7,8),]
+
+#renaming column names
+names(movies_joined_d)[4]<-"year_released"
+names(movies_joined_d)[5]<-"movie_rating"
+names(movies_joined_d)[6]<-"revenue"
+
+head(movies_joined_d)
+```
+
+
+```{r}
+# Histogram of Movie revenues
+movies_joined_d$revenue%>%  hist(main="Histogram of Movie Revenues for Action Movies", ylab="Rating",col = "pink")
+
+```
+
+The distribution of movie revenues for action movies shown above reveals that this variable is a right-skewed distribution. There are some movies that make a lot more revenue than others.
+
+We shall attempt a series of transformations to address this right skewed nature of this variable. These transformations are namely:log10 transformation, reciprocal transformation, natural log transformation and square root transformation.
+
+```{r}
+# log10 transformation
+log_revenue<- log10(movies_joined_d$revenue)
+log_revenue%>%hist(main="Histogram of Movie Revenues after log10 transformation", xlab="Revenue",col = "pink")
+```
+
+
+```{r}
+# Reciprocal transformation
+recip_revenue<-1/movies_joined_d$revenue
+recip_revenue%>%hist(main="Histogram of Movie Revenues after reciprocal transformation", xlab="Revenue",col = "pink")
+```
+
+
+```{r}
+# Natural log transformation
+ln_revenue<-log(movies_joined_d$revenue)
+ln_revenue %>%hist(main="Histogram of Movie Revenues after natural log transformation", xlab="Revenue",col = "pink")
+
+```
+
+```{r}
+# Square Root transformation
+sqrt_revenue<-sqrt(movies_joined_d$revenue)
+sqrt_revenue %>%hist(main="Histogram of Movie Revenues after square root transformation", xlab="Revenue",col = "pink")
+```
+
+The square root transformation is the most successful in addressing the right skew in this variable.
